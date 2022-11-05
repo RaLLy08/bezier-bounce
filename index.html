@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script type="text/javascript" src="index.js" defer></script>
+    <style type="text/css">
+    </style>
+</head>
+<body>
+    <canvas id="canvas" style="position: fixed; top: 50%; bottom: 50%; transform: translate(50%, -50%); border: solid 1px"> </canvas>
+
+    <div>
+        <div>
+            <input type="range" id="step" name="step" min="1" max="100" value="50">
+            <label for="step" id="step_label"></label>
+        </div>
+
+        <div>
+            <label for="show_lines" id="show_lines_label"> Show lines</label>
+            <input type="checkbox" id="show_lines" name="show_lines">
+        </div>
+
+        <div>
+            <input type="number" id="fade_koef" name="fade_koef" step="0.1" value="1.1">
+            <label for="fade_koef" id="fade_koef_label"> Fade coef</label>
+        </div>
+
+        <div>
+            <input type="number" id="tension_koef" name="tension_koef" step="1" value="20">
+            <label for="tension_koef" id="tension_koef_label">Tension koef</label>
+        </div>
+    </div>
+</body>
+</html>
