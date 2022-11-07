@@ -53,7 +53,9 @@ const options = {
 
 const env = {
     mousePressed: false,
-    draggedPoint: null
+    draggedPoint: null,
+    draggedPointIndex: null,
+    positionsFixed: true,
 }
 
 // class bezeir
@@ -96,33 +98,52 @@ const getBezierPoints = (points, options) => {
     const abSteps = getSteps(points[0], points[1], options.koef);
     const bcSteps = getSteps(points[1], points[2], options.koef);
 
+    const cbSteps = getSteps(points[3], points[2], options.koef);
+    const baSteps = getSteps(points[2], points[1], options.koef);
+
+    
+    const pointsOnLinesABBC = getPointsOnLines(abSteps, bcSteps);
+
+    const pointsOnLinesCBBA = getPointsOnLines(cbSteps, baSteps);
+
+    const pointsOnLines = getPointsOnLines(pointsOnLinesABBC, pointsOnLinesCBBA.reverse());
 
     // side effect 
     if (displayOptions.showLines) {
         drawLinesSteps(abSteps, bcSteps);
+        drawLinesSteps(cbSteps, baSteps);
+
         drawConnectPoints(points);
     }
 
 
-    const pointsOnLines = getPointsOnLines(abSteps, bcSteps);
-
     return pointsOnLines;
 }
 
+const fixedPositions = [
+    new Vector(400, Canvas.HEIGHT - 200),
+    new Vector(400, 400),
+    new Vector(400, 200),
+    new Vector(400, 200),
+]
+
 const points = [
-    { position: new Vector(200, Canvas.HEIGHT - 200), properties: { r: 12 } },
+    { position: fixedPositions[0], properties: { r: 12, text: 'A' },         velocity: new Vector(0, 0),
+    acceleration: new Vector(0, 0), },
     { 
-        position: new Vector(Canvas.WIDTH/2, Canvas.HEIGHT/2), 
+        position: fixedPositions[1], 
         velocity: new Vector(0, 0),
         acceleration: new Vector(0, 0),
         properties: {
-            text: "B", hide: true, r: 1
+            text: "B", hide: false, r: 12
         }
     },
-    { position: new Vector(Canvas.WIDTH - 200, 200), properties: {
-         r: 12
-    } },
-    // { x: Canvas.WIDTH, y: 300, text: "D", r: 10 },
+    { position: fixedPositions[2], properties: {
+        r: 12, text: 'C',  
+    },        velocity: new Vector(0, 0),
+    acceleration: new Vector(0, 0) },
+    { properties: { r: 12, text: 'D' }, position: fixedPositions[3],         velocity: new Vector(0, 0),
+        acceleration: new Vector(0, 0), },
 ]
 
 
@@ -141,34 +162,54 @@ const changePositions = (x, y) => {
 
     const p = getBezierPoints(points.map(el => el.position), options);
 
-    points.forEach((point) => {
+    points.forEach((point, i) => {
         const mouseNear = ((x - point.position.x)**2 + (y - point.position.y)**2) < (point.properties.r + 20)**2;
 
         if (mouseNear && !env.draggedPoint) {
             env.draggedPoint = point.position;
             env.controlPoints = true;
-
+            env.draggedPointIndex = i;
         }
 
         if (env.draggedPoint) {
+            if (env.positionsFixed) {
+                fixedPositions[env.draggedPointIndex].x = x;
+                fixedPositions[env.draggedPointIndex].y = y;
+            }
+
             env.draggedPoint.x = x;
             env.draggedPoint.y = y;
         }
     });
-
-    if (env.draggedPoint && env.controlPoints) return
-
+   
+    if (env.draggedPoint && env.controlPoints || env.positionsFixed) return
+    
     p.forEach((point) => {
         const mouseNear = ((x - point.x)**2 + (y - point.y)**2) < 30**2;
 
         if (mouseNear && !env.draggedPoint) {
-            env.draggedPoint = point;
+            let minPoint = null;
+            let minDistance = Infinity;
+            let minPointIndex = null;
+
+            points.forEach((point2, i, arr) => {
+                const distance = ((point.x - point2.position.x)**2 + (point.y - point2.position.y)**2);
+                
+                if (distance < minDistance && i !== 0 && i !== arr.length - 1) {
+                    minDistance = distance;
+                    minPoint = point2;
+                    minPointIndex = i;
+                }
+            });
+
+            env.draggedPoint = minPoint;
+            env.draggedPointIndex = minPointIndex;
             env.controlPoints = false;
         }
 
         if (env.draggedPoint) {
-            points[1].position.x = x;
-            points[1].position.y = y;
+            env.draggedPoint.position.x = x - (env.startPositionX - fixedPositions[env.draggedPointIndex].x);
+            env.draggedPoint.position.y = y - (env.startPositionY - fixedPositions[env.draggedPointIndex].y);
         }
     });
 }
@@ -176,6 +217,8 @@ const changePositions = (x, y) => {
 
 canvasEl.onmousedown = (e) => {
     env.mousePressed = true;
+    env.startPositionX = e.offsetX;
+    env.startPositionY = e.offsetY;
 }
 
 canvasEl.ontouchstart = (e) => {
@@ -242,18 +285,17 @@ const roundBy = (number, roundBy) => {
     return Math.round(number / roundBy) * roundBy;
 }
 
-const getSpringEffect = (vector, anchorVector, fade=1, tension=0.1) => {
-    const ellasticForce = vector
+const getSpringEffect = (point, anchorVector, fade=1, tension=0.1) => {
+    const ellasticForce = point.position
         .sub(anchorVector)
         .scaleBy(tension)
         .negate();
 
     return {
         acceleration: ellasticForce,
-        velocity: points[1].velocity.scaleBy(1 / fade),
+        velocity: point.velocity.scaleBy(1 / fade),
     }
 }
-
 
 const frame = () => {
     canvas.clear();
@@ -262,24 +304,27 @@ const frame = () => {
     drawPoints(points.map(el => ({...el.position, ...el.properties})));
     drawPoints(getBezierPoints(points.map(el => el.position), options));
 
-    const middleAC = points[0].position.add(points[2].position).scaleBy(0.5);
+
+    if (env.draggedPoint || env.positionsFixed) return;
 
 
-    if (env.draggedPoint) return;
+    for (let i = 0; i < points.length; i++) {
+        const point = points[i];
+        const anchor = fixedPositions[i];
 
-    const { acceleration, velocity } = getSpringEffect(
-        points[1].position, 
-        middleAC, 
-        options.fadeKoef, 
-        options.tension
-    );
-
-    points[1].velocity = velocity;
-    points[1].acceleration = acceleration;
-
-
-    points[1].velocity = points[1].velocity.add(points[1].acceleration);
-    points[1].position = points[1].position.add(points[1].velocity);
+        const { acceleration, velocity } = getSpringEffect(
+            point, 
+            anchor, 
+            options.fadeKoef, 
+            options.tension
+        );
+    
+        point.velocity = velocity;
+        point.acceleration = acceleration;
+    
+        point.velocity = point.velocity.add(point.acceleration);
+        point.position = point.position.add(point.velocity);
+    }
 }
 
 frame()
@@ -296,7 +341,10 @@ step.value = 100 / options.koef;
 step_label.innerHTML = 'Step: ' + 100 / options.koef;
 
 
-
+point_positions_btn.onclick = () => {
+    env.positionsFixed = !env.positionsFixed;
+    point_positions_btn.innerHTML = env.positionsFixed ? 'Lock points' : 'Unlock points';
+}
 
 show_lines.onchange = (e) => {
     displayOptions.showLines = e.target.checked;
