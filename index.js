@@ -27,8 +27,8 @@ class Canvas {
         this.ctx.arc(x, y, r, 0, 2 * Math.PI);
         this.ctx.stroke();
     }
-    drawText(x, y, text) {
-        this.ctx.font = "24px serif";
+    drawText(x, y, text, size=24) {
+        this.ctx.font = `${size}px serif`;
         this.ctx.fillText(text, x + 20, y + 20);
     }
 }
@@ -36,7 +36,7 @@ class Canvas {
 const canvasEl = document.getElementById("canvas");
 
 const canvas = new Canvas(canvasEl);
-
+const userEvents = new UserEvents(canvasEl);
 
 const displayOptions = {
     showLines: false,
@@ -98,9 +98,7 @@ const getBezierPoints = (points, options) => {
         return getCurvePoint(newPoints, t);
     };
 
-    return Array.from({ length: t }, (_, i) =>
-        getCurvePoint(points, i / t)
-    );
+    return Array.from({ length: t }, (_, i) => getCurvePoint(points, i / t));
 };
 
 const fixedPositions = [
@@ -126,7 +124,6 @@ const points = [
         acceleration: new Vector(0, 0),
         properties: {
             text: "B",
-            hide: false,
             r: 12,
         },
     },
@@ -162,128 +159,106 @@ const points = [
         properties: { r: 12, text: "F" },
     },
 ];
-const test = {
-    x: 0,
-    y: 0,
-    r: 4
+
+userEvents.onMousePress = () => {
+    changePositions(userEvents)
 }
-canvasEl.onmousemove = (e) => {
-    changePositions(e.offsetX, e.offsetY);
+
+userEvents.onMouseUnpress = () => {
+    env.draggedPoint = null;
 };
+const fixedBezier = [];
 
-canvasEl.ontouchmove = (e) => {
-    changePositions(e.touches[0].clientX, e.touches[0].clientY);
-};
+const changePositions = (userEvents) => {
+    const { syncPressedVelocity, syncPressedPosition, syncPressedPostionFromStart, startPostion } = userEvents;
 
-const changePositions = (x, y) => {
-    if (!env.mousePressed) return;
-
-    const p = getBezierPoints(
+    const mouseVector = new Vector(syncPressedPosition.x, syncPressedPosition.y);
+    
+    const bezierPoints = getBezierPoints(
         points.map((el) => el.position),
         options
     );
 
-    points.forEach((point, i) => {
-        // if (env.draggedCurvePoint) return;
+    if (!env.positionsFixed) {
+        fixedBezier.push(...bezierPoints.map(el => ({...el})));
+    }
+    // let len = 0;
 
-        const mouseNear =
-            (x - point.position.x) ** 2 + (y - point.position.y) ** 2 <
-            (point.properties.r + 20) ** 2;
+    // for (let i = 0; i < bezierPoints.length - 1; i++) {
+    //     const el = bezierPoints[i];
+    //     const nextEl = bezierPoints[i + 1];
+
+    //     len += Math.hypot(el.x - nextEl.x, el.y - nextEl.y);
+    // }
+
+    points.forEach((point, i) => {
+        const mouseNear = new Vector(startPostion.x, startPostion.y).distance(point.position) < point.properties.r;
 
         if (mouseNear && !env.draggedPoint) {
             env.draggedPoint = point;
             env.controlPoints = true;
         }
 
-        if (env.draggedPoint) {
-            if (env.positionsFixed) {
-                env.draggedPoint.fixedPosition.x = x;
-                env.draggedPoint.fixedPosition.y = y;
+        if (env.draggedPoint && !env.positionsFixed) {
+            env.draggedPoint.fixedPosition = mouseVector;
+            env.draggedPoint.position = mouseVector;
+        }
+    });
+
+    
+    if (env.draggedPoint && env.positionsFixed) { 
+        const newPosX = env.draggedPoint.fixedPosition.x + syncPressedPostionFromStart.x;
+        const newPosY = env.draggedPoint.fixedPosition.y + syncPressedPostionFromStart.y;
+    
+        const v = new Vector(newPosX - env.draggedPoint.position.x, newPosY - env.draggedPoint.position.y);
+    
+        env.draggedPoint.position = env.draggedPoint.position.add(v);
+    }
+
+
+
+    if ((env.draggedPoint && env.controlPoints) || !env.positionsFixed) return;
+
+
+    if (!env.draggedPoint) {
+        bezierPoints.forEach((point, i) => {
+            const pointR = 4
+            const mouseNear = (startPostion.x - point.x) ** 2 + (startPostion.y - point.y) ** 2 < pointR ** 2;
+    
+            if (mouseNear) {
+                let minPoint = null;
+                let minDistance = Infinity;
+    
+                points.forEach((point2, i, arr) => {
+                    const distance =
+                        (point.x - point2.position.x) ** 2 +
+                        (point.y - point2.position.y) ** 2;
+    
+                    if (distance < minDistance && i !== 0 && i !== arr.length - 1) {
+                        minDistance = distance;
+                        minPoint = point2;
+                        minPointIndex = i;
+                    }
+                });
+    
+                env.draggedPoint = minPoint;
+                env.controlPoints = false;
             }
+    
+        });
+    }
 
-            env.draggedPoint.position.x = x;
-            env.draggedPoint.position.y = y;
-        }
-    });
-
-    if ((env.draggedPoint && env.controlPoints) || env.positionsFixed) return;
-
-    p.forEach((point) => {
-        const mouseNear = (x - point.x) ** 2 + (y - point.y) ** 2 < 30 ** 2;
-
-        if (mouseNear && !env.draggedPoint) {
-            let minPoint = null;
-            let minDistance = Infinity;
-
-            points.forEach((point2, i, arr) => {
-                const distance =
-                    (point.x - point2.position.x) ** 2 +
-                    (point.y - point2.position.y) ** 2;
-
-                if (distance < minDistance && i !== 0 && i !== arr.length - 1) {
-                    minDistance = distance;
-                    env.draggedCurvePoint = point;
-                    minPoint = point2;
-                    minPointIndex = i;
-                }
-            });
-
-            env.draggedPoint = minPoint;
-            env.controlPoints = false;
-        }
-
-        if (env.draggedPoint) {
-            // const { x, y, t } = env.draggedCurvePoint;
-  
-            // const ut = (1 - t**2) / (t**2 + (1 - t)**2)
-
-            // const cx = ut*points[0].position.x + (1 - ut) * points[2].position.x;
-            // const cy = ut*points[0].position.y + (1 - ut) * points[2].position.y;
-
-
-            // test.x = ( x - points[0].position.x * (1 - t)**2 - points[2].position.x * t**2 ) / (2 * t);
-            // test.y = ( y - points[0].position.y * (1 - t)**2 - points[2].position.y * t**2 ) / (2 * t);
-
-            env.draggedPoint.position.x =
-                x -
-                (env.startPositionX - env.draggedPoint.fixedPosition.x);
-            env.draggedPoint.position.y =
-                y -
-                (env.startPositionY - env.draggedPoint.fixedPosition.y);
-        }
-    });
+    if (env.draggedPoint) {
+        env.draggedPoint.position = env.draggedPoint.fixedPosition.add(syncPressedPostionFromStart)
+    }
 };
 
-canvasEl.onmousedown = (e) => {
-    env.mousePressed = true;
-    env.startPositionX = e.offsetX;
-    env.startPositionY = e.offsetY;
-};
-
-canvasEl.ontouchstart = (e) => {
-    env.mousePressed = true;
-};
-
-canvasEl.onmouseup = (e) => {
-    env.mousePressed = false;
-    env.draggedPoint = null;
-};
-
-canvasEl.ontouchend = (e) => {
-    env.mousePressed = false;
-    env.draggedPoint = null;
-};
-
-canvasEl.onmouseleave = (e) => {
-    env.mousePressed = false;
-    env.draggedPoint = null;
-};
 
 const drawPoint = (point = {}) => {
     if (point.hide) return;
 
     canvas.drawPoint(point.x, point.y, point.r);
-    point.text && canvas.drawText(point.x, point.y, point.text);
+    point.text && canvas.drawText(point.x, point.y, point.text, point.textSize);
 };
 
 const drawPoints = (points) => {
@@ -321,7 +296,9 @@ const getSpringEffect = (point, anchorVector, fade = 1, tension = 0.1) => {
 const frame = () => {
     canvas.clear();
     window.requestAnimationFrame(frame);
-    drawPoint(test)
+
+    userEvents.sync();
+
     drawPoints(points.map((el) => ({ ...el.position, ...el.properties })));
     drawPoints(
         getBezierPoints(
@@ -329,16 +306,16 @@ const frame = () => {
             options
         )
     );
+    if (env.draggedPoint) return
 
 
     points.forEach(point => {
-        if (env.draggedPoint === point) return
 
         point.velocity = point.velocity.add(point.acceleration);
         point.position = point.position.add(point.velocity);
     })
 
-    if (env.positionsFixed) return;
+    if (!env.positionsFixed) return;
 
 
     for (let i = 0; i < points.length; i++) {
@@ -370,7 +347,16 @@ step_label.innerHTML = "Step: " + options.koef;
 
 point_positions_btn.onclick = () => {
     env.positionsFixed = !env.positionsFixed;
-    point_positions_btn.innerHTML = env.positionsFixed
+
+
+    if (!env.positionsFixed) {
+        points.forEach((point, i) => {
+            point.velocity = new Vector(0, 0);
+            point.acceleration = new Vector(0, 0);
+        });
+    }
+
+    point_positions_btn.innerHTML = !env.positionsFixed
         ? "Lock points"
         : "Unlock points";
 };
